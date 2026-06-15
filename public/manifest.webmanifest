@@ -1,0 +1,10 @@
+{
+  "name": "Daniel Campbell Applied AI Systems Portfolio",
+  "short_name": "DC Portfolio",
+  "description": "Interactive portfolio OS for applied AI systems, GraphRAG, recommenders, agentic platforms, and MLOps.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f0df",
+  "theme_color": "#f46b2a",
+  "icons": []
+}
