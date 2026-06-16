@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type AnchorHTMLAttributes, type FormEvent, type KeyboardEvent } from 'react';
 import {
   Activity,
   BadgeCheck,
   BrainCircuit,
   BriefcaseBusiness,
+  Calendar,
   ChevronRight,
   CircleDot,
   CloudCog,
@@ -14,6 +15,7 @@ import {
   Github,
   Globe2,
   GraduationCap,
+  Linkedin,
   Mail,
   MapPin,
   Maximize2,
@@ -28,6 +30,14 @@ import {
   X,
 } from 'lucide-react';
 import heroWorkbench from './assets/ai-workbench-hero.png';
+import {
+  buildProjectRefs,
+  completeTerminalInput,
+  executeTerminalCommand,
+  type TerminalDockId,
+  type TerminalProjectTab,
+} from './terminal';
+import { createIncidentState, formatIncidentTime, getIncidentPortfolioLinks, incidentIntro, runIncidentCommand, type IncidentState } from './incidentGame';
 
 type Project = {
   title: string;
@@ -74,9 +84,27 @@ const contact = {
   role: 'Founder & CTO @ Synexis | ex. NVIDIA, Borealis AI',
   location: 'Toronto / Sao Paulo / San Francisco',
   email: 'dcamp049@uottawa.ca',
+  calendly: 'https://calendly.com/dcampbel/30min',
+  linkedin: 'https://www.linkedin.com/in/campbeld/',
   github: 'https://github.com/SpookOrSpooky',
-  clearance: 'Secret Clearance - Level II',
+  clearance: 'SECRET - Level II',
 };
+
+function EmailLink({ className, children, onClick, ...props }: AnchorHTMLAttributes<HTMLAnchorElement>) {
+  return (
+    <a
+      className={className}
+      href={`mailto:${contact.email}`}
+      onClick={(event) => {
+        void navigator.clipboard.writeText(contact.email);
+        onClick?.(event);
+      }}
+      {...props}
+    >
+      {children}
+    </a>
+  );
+}
 
 const signalStats = [
   { value: '$16M', label: 'Reduced annualized AI infrastructure run-rate' },
@@ -219,7 +247,7 @@ const projects: Project[] = [
     ],
     proof: ['Estimated $16M annualized infrastructure reduction', 'Global AI engineering portfolio', 'Critical security non-compliance reduction', 'Infrastructure architecture contributions to RBC AI application portfolio'],
     capabilities: ['MLOps leadership', 'Hybrid-cloud platform architecture', 'GPU scheduling and tenancy', 'Feature-store strategy', 'Experiment management', 'Enterprise governance', 'Executive technical roadmaps'],
-    mediaNote: 'NOMI Forecast public video plus room for sanitized architecture snapshots, platform diagrams, or dashboard screenshots.',
+    mediaNote: 'NOMI Forecast, Aiden, and ATOM architecture showcase',
     video: {
       kind: 'mp4',
       title: 'NOMI Forecast customer experience award video',
@@ -266,7 +294,7 @@ const projects: Project[] = [
     ],
     proof: ['Low-hallucination legal analysis', 'Applied-research team leadership', 'Text and voice UX experimentation'],
     capabilities: ['Applied AI leadership', 'Retrieval evaluation', 'Legal-domain AI', 'Agent task design', 'Research-to-production execution'],
-    mediaNote: 'Add sanitized corpus evaluation, workflow, or conversational UX screenshots here.',
+    mediaNote: 'Sanitized Application views and architecture examples',
   },
   {
     title: 'Real-time Voice Conversion Platform',
@@ -377,17 +405,161 @@ const dockItems = [
   { id: 'cloud', label: 'Cloud', icon: CloudCog },
 ] as const;
 
-type DockId = (typeof dockItems)[number]['id'];
-type ProjectTab = 'overview' | 'architecture' | 'evidence';
+type DockId = TerminalDockId;
+type ProjectTab = TerminalProjectTab;
+type TerminalLine = {
+  id: number;
+  text: string;
+  tone?: 'command' | 'muted' | 'error';
+};
 
+const projectRefs = buildProjectRefs(projects);
+const introBootSteps = [
+  { label: 'loading portfolio-os', increment: 5 },
+  { label: '> mounting projects, graphs, agents, infrastructure...', increment: 4 },
+  { label: '> loading vision kernal', increment: 9 },
+];
+const introVisionLines = [
+  '> "The next generation of AI products will not be demos"',
+  '> "They will be memory, judgment, and infrastructure at scale..."',
+];
+const introPromptPrefix = 'daniel@portfolio:~$';
+const introPromptCommand = `${introPromptPrefix} help`;
 function App() {
   const [activeProjectIndex, setActiveProjectIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<ProjectTab>('overview');
   const [activeDock, setActiveDock] = useState<DockId>('projects');
+  const [terminalOpen, setTerminalOpen] = useState(true);
+  const [introPhase, setIntroPhase] = useState<'booting' | 'docking' | 'done'>('booting');
+  const [introAccelerated, setIntroAccelerated] = useState(false);
+  const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([]);
+  const [terminalCwd, setTerminalCwd] = useState('portfolio://');
+  const [commandHistory, setCommandHistory] = useState<string[]>([]);
+  const [incidentCommanderOpen, setIncidentCommanderOpen] = useState(false);
+  const terminalLineId = useRef(1);
   const activeProject = projects[activeProjectIndex];
 
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 760px)').matches) {
+      setTerminalOpen(false);
+    }
+  }, []);
+
+  const scrollToTarget = (target: string) => {
+    window.setTimeout(() => {
+      document.querySelector(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+  };
+
+  const runTerminalCommand = (rawInput: string) => {
+    const input = rawInput.trim();
+    if (!input) return;
+
+    if (input.startsWith('__complete__ ')) {
+      const completionText = input.replace('__complete__ ', '');
+      setTerminalLines((lines) => [
+        ...lines,
+        {
+          id: terminalLineId.current++,
+          text: completionText,
+          tone: 'muted',
+        },
+      ]);
+      return;
+    }
+
+    const result = executeTerminalCommand(input, {
+      projects: projectRefs,
+      cwd: terminalCwd,
+      activeProjectIndex,
+    });
+    const promptLine: TerminalLine = {
+      id: terminalLineId.current++,
+      text: `daniel@portfolio:${shortPromptPath(terminalCwd)}$ ${input}`,
+      tone: 'command',
+    };
+    const outputLines = result.output.map<TerminalLine>((text) => ({
+      id: terminalLineId.current++,
+      text,
+      tone: text.startsWith('command not found') ? 'error' : undefined,
+    }));
+
+    setCommandHistory((history) => [...history, input]);
+    setTerminalOpen(true);
+    setTerminalLines((lines) => (result.clear ? [] : [...lines, promptLine, ...outputLines]));
+    if (result.nextCwd) {
+      setTerminalCwd(result.nextCwd);
+    }
+
+    if (result.action?.type === 'openProject') {
+      setActiveDock('projects');
+      setActiveProjectIndex(result.action.projectIndex);
+      setActiveTab('overview');
+      setTerminalCwd(result.action.cwd);
+      scrollToTarget('#portfolio-os');
+    }
+
+    if (result.action?.type === 'openDock') {
+      setActiveDock(result.action.dockId);
+      setTerminalCwd(result.action.cwd);
+      scrollToTarget('#portfolio-os');
+    }
+
+    if (result.action?.type === 'openCredentials') {
+      setTerminalCwd(result.action.cwd);
+      scrollToTarget('#credentials');
+    }
+
+    if (result.action?.type === 'setTab') {
+      const { cwd, tab } = result.action;
+      setActiveDock('projects');
+      const projectFromPath = projectRefs.find((project) => cwd.includes(`/projects/${project.file}/`));
+      if (projectFromPath) {
+        setActiveProjectIndex(projectFromPath.index);
+      }
+      setActiveTab(tab);
+      setTerminalCwd(cwd);
+      scrollToTarget('#portfolio-os');
+    }
+
+    if (result.action?.type === 'projectDelta') {
+      const { delta } = result.action;
+      setActiveDock('projects');
+      setActiveProjectIndex((index) => (index + delta + projects.length) % projects.length);
+      scrollToTarget('#portfolio-os');
+    }
+
+    if (result.openIncidentCommander) {
+      setIncidentCommanderOpen(true);
+    }
+
+    if (result.replayIntro) {
+      setIntroAccelerated(false);
+      setIntroPhase('booting');
+      window.setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 20);
+    }
+  };
+
   return (
-    <div className="site-shell">
+    <div className={introPhase === 'done' ? 'site-shell intro-complete' : 'site-shell intro-pending'}>
+      {introPhase !== 'done' && (
+        <TerminalIntro
+          accelerated={introAccelerated}
+          phase={introPhase}
+          onAccelerate={() => setIntroAccelerated(true)}
+          onComplete={() => {
+            setIntroAccelerated(false);
+            const bootLines = toBootTerminalLines();
+            terminalLineId.current = bootLines.length + 1;
+            setTerminalLines(bootLines);
+            setTerminalOpen(true);
+            setIntroPhase('docking');
+            window.setTimeout(() => {
+              setIntroPhase('done');
+            }, 1500);
+          }}
+        />
+      )}
       <Header />
       <main>
         <section className="hero-os" id="home">
@@ -406,15 +578,19 @@ function App() {
                 <PanelLeft size={18} />
                 Open portfolio OS
               </a>
-              <a className="button button-secondary" href={`mailto:${contact.email}`}>
+              <a className="button button-secondary" href={contact.calendly} target="_blank" rel="noreferrer">
+                <Calendar size={18} />
+                Meet with me
+              </a>
+              <EmailLink className="button button-secondary">
                 <Mail size={18} />
                 {contact.email}
-              </a>
+              </EmailLink>
             </div>
           </div>
 
           <aside className="hero-profile" aria-label="Current profile">
-            <img src={heroWorkbench} alt="Illustrated AI systems workbench" />
+            <HeroTerminalCard activeProject={activeProject} />
             <div className="profile-chip">
               <span>Current role</span>
               <strong>{contact.role}</strong>
@@ -498,8 +674,45 @@ function App() {
         </section>
       </main>
       <Footer />
+      <CommandTerminal
+        cwd={terminalCwd}
+        history={commandHistory}
+        lines={terminalLines}
+        open={terminalOpen && introPhase !== 'booting'}
+        handoff={introPhase === 'docking'}
+        typeDefaultHelp={introPhase === 'done'}
+        activeProjectIndex={activeProjectIndex}
+        onRunCommand={runTerminalCommand}
+        onSetOpen={setTerminalOpen}
+      />
+      {incidentCommanderOpen && (
+        <IncidentCommanderModal
+          onClose={() => setIncidentCommanderOpen(false)}
+          onOpenProjectCommand={(command) => {
+            setIncidentCommanderOpen(false);
+            runTerminalCommand(command);
+          }}
+        />
+      )}
     </div>
   );
+}
+
+function toBootTerminalLines(): TerminalLine[] {
+  return introVisionLines.map((line, index) => ({
+    id: index,
+    text: line,
+    tone: undefined,
+  }));
+}
+
+function shortPromptPath(cwd: string) {
+  if (cwd === 'portfolio://') return '~';
+  return cwd.replace('portfolio://', '~/');
+}
+
+function projectPortfolioPath(file: string, tab: ProjectTab = 'overview') {
+  return `portfolio://projects/${file}/${tab}.tab`;
 }
 
 function Header() {
@@ -509,7 +722,7 @@ function Header() {
         <span className="brand-mark">DC</span>
         <span>
           <strong>Daniel Campbell</strong>
-          <small>AI systems portfolio</small>
+          <small>systems showcase</small>
         </span>
       </a>
       <nav aria-label="Primary navigation">
@@ -517,8 +730,12 @@ function Header() {
         <a href="#credentials">Credentials</a>
       </nav>
       <div className="topbar-actions">
-        <a className="icon-button" href={`mailto:${contact.email}`} aria-label="Email Daniel Campbell">
+        <EmailLink className="icon-button" aria-label="Email Daniel Campbell">
           <Mail size={19} />
+        </EmailLink>
+        <a className="button button-secondary compact-button" href={contact.linkedin} target="_blank" rel="noreferrer">
+          <Linkedin size={17} />
+          LinkedIn
         </a>
         <a className="button button-secondary compact-button" href={contact.github} target="_blank" rel="noreferrer">
           <Github size={17} />
@@ -527,6 +744,678 @@ function Header() {
       </div>
     </header>
   );
+}
+
+function TerminalIntro({
+  accelerated,
+  phase,
+  onAccelerate,
+  onComplete,
+}: {
+  accelerated: boolean;
+  phase: 'booting' | 'docking';
+  onAccelerate: () => void;
+  onComplete: () => void;
+}) {
+  const [bootStepIndex, setBootStepIndex] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [introMode, setIntroMode] = useState<'typing-step' | 'progress' | 'typing-vision' | 'typing-prompt'>('typing-step');
+  const [introLog, setIntroLog] = useState<string[]>([]);
+  const [typingText, setTypingText] = useState(introBootSteps[0].label);
+  const [typingIndex, setTypingIndex] = useState(0);
+  const [visionIndex, setVisionIndex] = useState(0);
+  const completedRef = useRef(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    overlayRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!reducedMotion) return undefined;
+
+    setIntroLog([...introBootSteps.map((step) => step.label), ...introVisionLines]);
+    setProgress(100);
+    setIntroMode('typing-prompt');
+    setTypingText(introPromptCommand);
+    setTypingIndex(introPromptCommand.length);
+    const timer = window.setTimeout(() => {
+      if (!completedRef.current) {
+        completedRef.current = true;
+        onComplete();
+      }
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [onComplete]);
+
+  useEffect(() => {
+    const accelerate = () => onAccelerate();
+    window.addEventListener('wheel', accelerate, { passive: true });
+    window.addEventListener('touchmove', accelerate, { passive: true });
+    window.addEventListener('keydown', accelerate);
+    window.addEventListener('click', accelerate);
+
+    return () => {
+      window.removeEventListener('wheel', accelerate);
+      window.removeEventListener('touchmove', accelerate);
+      window.removeEventListener('keydown', accelerate);
+      window.removeEventListener('click', accelerate);
+    };
+  }, [onAccelerate]);
+
+  useEffect(() => {
+    if (phase === 'docking' || completedRef.current) return undefined;
+
+    if (accelerated) {
+      setIntroLog([...introBootSteps.map((step) => step.label), ...introVisionLines]);
+      setProgress(100);
+      setIntroMode('typing-prompt');
+      setTypingText(introPromptCommand);
+      setTypingIndex(introPromptCommand.length);
+      const timer = window.setTimeout(() => {
+        if (!completedRef.current) {
+          completedRef.current = true;
+          onComplete();
+        }
+      }, 360);
+      return () => window.clearTimeout(timer);
+    }
+
+    if (introMode === 'typing-step' || introMode === 'typing-vision' || introMode === 'typing-prompt') {
+      if (typingIndex < typingText.length) {
+        const typeTimer = window.setTimeout(() => setTypingIndex((index) => index + 1), introMode === 'typing-prompt' ? 30 : 24);
+        return () => window.clearTimeout(typeTimer);
+      }
+
+      if (introMode === 'typing-step') {
+        const nextTimer = window.setTimeout(() => {
+          setIntroLog((lines) => [...lines, typingText]);
+          setIntroMode('progress');
+          setProgress(0);
+          setTypingIndex(0);
+        }, 220);
+        return () => window.clearTimeout(nextTimer);
+      }
+
+      if (introMode === 'typing-vision') {
+        const nextTimer = window.setTimeout(() => {
+          setIntroLog((lines) => [...lines, typingText]);
+          const nextVisionIndex = visionIndex + 1;
+          if (nextVisionIndex < introVisionLines.length) {
+            setVisionIndex(nextVisionIndex);
+            setTypingText(introVisionLines[nextVisionIndex]);
+            setTypingIndex(0);
+            return;
+          }
+
+          setIntroMode('typing-prompt');
+          setTypingText(introPromptCommand);
+          setTypingIndex(0);
+        }, 260);
+        return () => window.clearTimeout(nextTimer);
+      }
+
+      const completeTimer = window.setTimeout(() => {
+        if (!completedRef.current) {
+          completedRef.current = true;
+          onComplete();
+        }
+      }, 820);
+      return () => window.clearTimeout(completeTimer);
+    }
+
+    const currentStep = introBootSteps[bootStepIndex];
+    if (progress >= 100) {
+      const nextTimer = window.setTimeout(() => {
+        if (bootStepIndex >= introBootSteps.length - 1) {
+          setIntroMode('typing-vision');
+          setVisionIndex(0);
+          setTypingText(introVisionLines[0]);
+          setTypingIndex(0);
+          return;
+        }
+        const nextStepIndex = bootStepIndex + 1;
+        setBootStepIndex(nextStepIndex);
+        setIntroMode('typing-step');
+        setTypingText(introBootSteps[nextStepIndex].label);
+        setTypingIndex(0);
+        setProgress(0);
+      }, 420);
+      return () => window.clearTimeout(nextTimer);
+    }
+
+    const timer = window.setTimeout(() => {
+      setProgress((value) => Math.min(100, value + currentStep.increment));
+    }, 48);
+
+    return () => window.clearTimeout(timer);
+  }, [accelerated, bootStepIndex, introMode, onComplete, phase, progress, typingIndex, typingText, visionIndex]);
+
+  const typedLine = typingText.slice(0, typingIndex);
+  const typedPrompt = typedLine.slice(0, introPromptPrefix.length);
+  const typedPromptInput = typedLine.length > introPromptPrefix.length ? typedLine.slice(introPromptPrefix.length + 1) : '';
+  const promptStillTyping = introMode === 'typing-prompt' && typedLine.length <= introPromptPrefix.length;
+  const progressLabel = formatIntroProgress(progress);
+  const showProgress = introMode === 'progress';
+
+  return (
+    <div
+      aria-label="Terminal intro"
+      aria-modal="true"
+      className={phase === 'docking' ? 'terminal-intro-overlay docking' : 'terminal-intro-overlay'}
+      onClick={onAccelerate}
+      onKeyDown={onAccelerate}
+      ref={overlayRef}
+      role="dialog"
+      tabIndex={-1}
+    >
+      <div className="terminal-intro-window">
+        <div className="command-terminal-header">
+          <div>
+            <strong>portfolio shell</strong>
+            <span>portfolio://</span>
+          </div>
+          <button type="button" aria-hidden="true" tabIndex={-1}>
+            Esc
+          </button>
+        </div>
+        <div className="command-terminal-output terminal-intro-output" aria-live="polite">
+          {introLog.map((line) => (
+            <span className="terminal-output-line" key={line}>{line}</span>
+          ))}
+          {showProgress ? (
+            <span className="terminal-output-line intro-progress-line">{progressLabel}<span className="terminal-cursor">█</span></span>
+          ) : introMode === 'typing-prompt' ? null : (
+            <span className="terminal-output-line">
+              {typedLine}
+              <span className="terminal-cursor">█</span>
+            </span>
+          )}
+        </div>
+        <div className={introMode === 'typing-prompt' || phase === 'docking' ? 'command-terminal-form intro-terminal-form visible' : 'command-terminal-form intro-terminal-form'} aria-hidden="true">
+          {introMode === 'typing-prompt' || phase === 'docking' ? (
+            <>
+              <span>
+                {typedPrompt}
+                {promptStillTyping && <span className="terminal-cursor">█</span>}
+              </span>
+              <span className="terminal-input-wrap">
+                <span className="terminal-input-mirror">
+                  {typedPromptInput}
+                  {!promptStillTyping && <span className="terminal-cursor">█</span>}
+                </span>
+              </span>
+            </>
+          ) : (
+            <span>&nbsp;</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatIntroProgress(progress: number) {
+  const slots = 20;
+  const filled = Math.round((progress / 100) * slots);
+  const bar = `${'|'.repeat(filled)}${' '.repeat(slots - filled)}`;
+  const status = progress >= 100 ? ' - COMPLETE' : '';
+  return `[${bar}] ${Math.round(progress)}%${status}`;
+}
+
+function HeroTerminalCard({ activeProject }: { activeProject: Project }) {
+  return (
+    <div className="hero-terminal-card" aria-label="Portfolio terminal status">
+      <div className="terminal-window-bar">
+        <span />
+        <span />
+        <span />
+      </div>
+      <div className="hero-terminal-screen">
+        <span className="terminal-command">daniel@portfolio:~$ whoami</span>
+        <strong>Applied AI systems leader</strong>
+        <span>Graph-backed memory, recommenders, agents, MLOps, and cloud infrastructure.</span>
+        <span className="terminal-command">
+          daniel@portfolio:~$ open {shortPromptPath(projectPortfolioPath(activeProject.file))}
+        </span>
+        <span className="terminal-block-cursor" aria-hidden="true">█</span>
+      </div>
+    </div>
+  );
+}
+
+function CommandTerminal({
+  cwd,
+  history,
+  lines,
+  open,
+  handoff = false,
+  typeDefaultHelp = false,
+  activeProjectIndex,
+  onRunCommand,
+  onSetOpen,
+}: {
+  cwd: string;
+  history: string[];
+  lines: TerminalLine[];
+  open: boolean;
+  handoff?: boolean;
+  typeDefaultHelp?: boolean;
+  activeProjectIndex: number;
+  onRunCommand: (input: string) => void;
+  onSetOpen: (open: boolean) => void;
+}) {
+  const [input, setInput] = useState('');
+  const [defaultCommandActive, setDefaultCommandActive] = useState(true);
+  const [defaultCommandText, setDefaultCommandText] = useState('help');
+  const [typedDefaultOnce, setTypedDefaultOnce] = useState(true);
+  const [historyIndex, setHistoryIndex] = useState<number | null>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    outputRef.current?.scrollTo({ top: outputRef.current.scrollHeight });
+  }, [lines, open]);
+
+  useEffect(() => {
+    if (!open || !typeDefaultHelp || !defaultCommandActive || input || typedDefaultOnce) return undefined;
+    if (defaultCommandText.length >= 'help'.length) {
+      setTypedDefaultOnce(true);
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      setDefaultCommandText((text) => 'help'.slice(0, text.length + 1));
+    }, 95);
+
+    return () => window.clearTimeout(timer);
+  }, [defaultCommandActive, defaultCommandText, input, open, typeDefaultHelp, typedDefaultOnce]);
+
+  const submitCommand = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const command = input || (defaultCommandActive ? 'help' : '');
+    onRunCommand(command);
+    setInput('');
+    setDefaultCommandText('');
+    setDefaultCommandActive(false);
+    setHistoryIndex(null);
+  };
+
+  const completeInput = () => {
+    const completion = completeTerminalInput(input, {
+      projects: projectRefs,
+      cwd,
+      activeProjectIndex,
+    });
+    if (completion.value) {
+      setInput(completion.value);
+      setDefaultCommandText('');
+      setDefaultCommandActive(false);
+    }
+    if (completion.output?.length) {
+      onRunCommand(`__complete__ ${completion.output.join('  ')}`);
+    }
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      onSetOpen(false);
+      return;
+    }
+
+    if (event.ctrlKey && event.key.toLowerCase() === 'l') {
+      event.preventDefault();
+      onRunCommand('clear');
+      setInput('');
+      setDefaultCommandText('');
+      return;
+    }
+
+    if (
+      defaultCommandActive &&
+      !input &&
+      event.key.length === 1 &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey
+    ) {
+      event.preventDefault();
+      setDefaultCommandActive(false);
+      setDefaultCommandText('');
+      setInput(event.key);
+      return;
+    }
+
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      completeInput();
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!history.length) return;
+      const nextIndex = historyIndex === null ? history.length - 1 : Math.max(0, historyIndex - 1);
+      setHistoryIndex(nextIndex);
+      setInput(history[nextIndex]);
+      setDefaultCommandText('');
+      setDefaultCommandActive(false);
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (historyIndex === null) return;
+      const nextIndex = historyIndex + 1;
+      if (nextIndex >= history.length) {
+        setHistoryIndex(null);
+        setInput('');
+        setDefaultCommandText('');
+        setDefaultCommandActive(false);
+        return;
+      }
+      setHistoryIndex(nextIndex);
+      setInput(history[nextIndex]);
+      setDefaultCommandText('');
+      setDefaultCommandActive(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button className="terminal-pill" type="button" onClick={() => onSetOpen(true)} aria-label="Open command terminal">
+        <Code2 size={17} />
+        <span>daniel@portfolio:~$</span>
+      </button>
+    );
+  }
+
+  return (
+    <section className={handoff ? 'command-terminal handoff' : 'command-terminal'} aria-label="Command terminal">
+      <div className="command-terminal-header">
+        <div>
+          <strong>portfolio shell</strong>
+          <span>{cwd}</span>
+        </div>
+        <button type="button" onClick={() => onSetOpen(false)} aria-label="Collapse command terminal">
+          Esc
+        </button>
+      </div>
+      <div className="command-terminal-output" aria-live="polite" ref={outputRef}>
+        {lines.map((line) => (
+          <span className={line.tone ? `terminal-output-line ${line.tone}` : 'terminal-output-line'} key={line.id}>
+            {line.text}
+          </span>
+        ))}
+      </div>
+      <form className="command-terminal-form" onSubmit={submitCommand}>
+        <label className="sr-only" htmlFor="terminal-command-input">
+          Terminal command
+        </label>
+        <span aria-hidden="true">daniel@portfolio:{shortPromptPath(cwd)}$</span>
+        <span className="terminal-input-wrap">
+          <span className={input || defaultCommandActive ? 'terminal-input-mirror' : 'terminal-input-mirror placeholder'} aria-hidden="true">
+            {input || (defaultCommandActive ? defaultCommandText : '')}
+            <span className="terminal-form-cursor">█</span>
+          </span>
+          <input
+            autoComplete="off"
+            id="terminal-command-input"
+            onChange={(event) => {
+              setDefaultCommandActive(false);
+              setDefaultCommandText('');
+              setInput(event.target.value);
+            }}
+            onKeyDown={handleKeyDown}
+            value={input}
+          />
+        </span>
+      </form>
+    </section>
+  );
+}
+
+function IncidentCommanderModal({
+  onClose,
+  onOpenProjectCommand,
+}: {
+  onClose: () => void;
+  onOpenProjectCommand: (command: string) => void;
+}) {
+  const [incidentState, setIncidentState] = useState<IncidentState>(() => createIncidentState());
+  const [logLines, setLogLines] = useState<string[]>([]);
+  const [input, setInput] = useState('');
+  const outputRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setLogLines(incidentIntro(incidentState));
+    // Run only once so the intro matches the randomized scenario selected for this modal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    outputRef.current?.scrollTo({ top: outputRef.current.scrollHeight });
+  }, [logLines]);
+
+  useEffect(() => {
+    if (incidentState.status !== 'active') return undefined;
+
+    const timer = window.setInterval(() => {
+      setIncidentState((state) => {
+        if (state.status !== 'active') return state;
+        const nextTime = Math.max(0, state.timeRemaining - 1);
+        if (nextTime > 0) return { ...state, timeRemaining: nextTime };
+
+        setLogLines((lines) => [
+          ...lines,
+          '',
+          'incident timer expired.',
+          'incident failed: user trust degraded before a validated fix landed.',
+        ]);
+        return {
+          ...state,
+          timeRemaining: 0,
+          status: 'lost',
+          score: 0,
+          rank: 'dashboard tourist',
+        };
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [incidentState.status]);
+
+  useEffect(() => {
+    if (incidentState.status !== 'won' || !incidentState.achievements.length) return;
+    const storageKey = 'incidentCommanderAchievements';
+    const stored = window.localStorage.getItem(storageKey);
+    const parsed = stored ? JSON.parse(stored) as Record<string, { count: number; firstUnlockedAt: string }> : {};
+    const now = new Date().toISOString();
+    for (const achievement of incidentState.achievements) {
+      parsed[achievement] = {
+        count: (parsed[achievement]?.count ?? 0) + 1,
+        firstUnlockedAt: parsed[achievement]?.firstUnlockedAt ?? now,
+      };
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(parsed));
+  }, [incidentState.achievements, incidentState.status]);
+
+  const runGameCommand = (command: string) => {
+    const trimmed = command.trim();
+    if (!trimmed) return;
+
+    if (trimmed.toLowerCase() === 'reset') {
+      const nextState = createIncidentState();
+      setIncidentState(nextState);
+      setLogLines(incidentIntro(nextState));
+      setInput('');
+      return;
+    }
+
+    const result = runIncidentCommand(trimmed, incidentState);
+    setIncidentState(result.state);
+    setLogLines((lines) => [...lines, '', `incident@portfolio:/sev2$ ${trimmed}`, ...result.output]);
+    setInput('');
+  };
+
+  const portfolioLinks = getIncidentPortfolioLinks(incidentState);
+  const commandGroups = [
+    { label: 'Lifecycle', commands: [...(incidentState.status === 'briefing' ? ['start incident'] : []), 'status', 'objective', 'evidence', 'portfolio guide', 'hint'] },
+    { label: 'Inspect', commands: ['inspect slo', 'inspect deploys', 'trace request', 'inspect parser', 'inspect rag', 'inspect graph', 'inspect agent', 'inspect gpu', 'inspect index', 'inspect prompt'] },
+    { label: 'Hypothesize', commands: ['hypothesis parser-schema-drift', 'hypothesis temporal-graph-projection-skew', 'hypothesis agent-route-policy-regression', 'hypothesis embedding-freshness-starvation'] },
+    { label: 'Mitigate', commands: ['mitigate rollback-parser-template', 'mitigate rollback-graph-projection', 'mitigate rollback-route-policy', 'mitigate reserve-embedding-gpu-pool', 'mitigate rebuild-recent-embeddings'] },
+    { label: 'Replay', commands: ['run replay constraints', 'run replay temporal', 'run replay numeric', 'run replay retrieval', 'validate', 'close incident'] },
+  ];
+
+  return (
+    <div className="incident-modal" role="dialog" aria-modal="true" aria-label="Incident Commander">
+      <div className="incident-panel">
+        <div className="incident-header">
+          <div>
+            <span>incident://{incidentState.scenario.target}</span>
+            <h2>Incident Commander: {incidentState.scenario.title}</h2>
+          </div>
+          <button className="media-toggle" type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        <div className="incident-status-grid" aria-label="Incident status">
+          <span>time {formatIncidentTime(incidentState.timeRemaining)}</span>
+          <span>health {incidentState.health}</span>
+          <span>confidence {incidentState.confidence}</span>
+          <span>{incidentState.status} / {incidentState.scenario.symptom}</span>
+        </div>
+
+        {incidentState.status === 'briefing' && (
+          <div className="incident-briefing-actions">
+            <strong>Read the briefing first.</strong>
+            <p>The clock is paused. Start only when you are ready to diagnose and command the incident.</p>
+            <button className="button button-primary" type="button" onClick={() => runGameCommand('start incident')}>
+              start incident
+            </button>
+          </div>
+        )}
+
+        <div className="incident-playbook" aria-label="Incident playbook">
+          <div className="incident-board">
+            <strong>Evidence board</strong>
+            <span className={incidentState.evidence.some((item) => item.category === 'impact') ? 'complete' : ''}>impact</span>
+            <span className={incidentState.evidence.some((item) => item.category === 'localization') ? 'complete' : ''}>localization</span>
+            <span className={incidentState.evidence.some((item) => item.category === 'causality') ? 'complete' : ''}>causality</span>
+            <span className={incidentState.rootCause === incidentState.scenario.correctRoot ? 'complete' : ''}>hypothesis</span>
+            <span className={incidentState.validated ? 'complete' : ''}>validation</span>
+            <small>{incidentState.evidence.length ? incidentState.evidence.map((item) => item.title).join(' / ') : 'No evidence collected yet.'}</small>
+          </div>
+          <div className="incident-board">
+            <strong>Portfolio field guide</strong>
+            {portfolioLinks.map((link) => (
+              <button
+                key={`${link.projectFile}-${link.tab}-guide`}
+                type="button"
+                onClick={() => onOpenProjectCommand(`cd ${projectPortfolioPath(link.projectFile, link.tab)}`)}
+              >
+                {link.title}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="incident-terminal" aria-live="polite" ref={outputRef}>
+          {logLines.map((line, index) => (
+            <span className={incidentLineClass(line)} key={`${line}-${index}`}>{line || ' '}</span>
+          ))}
+        </div>
+
+        <form
+          className="incident-command-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            runGameCommand(input);
+          }}
+        >
+          <label className="sr-only" htmlFor="incident-command-input">Incident command</label>
+          <span>incident@portfolio:/sev2$</span>
+          <input
+            autoComplete="off"
+            id="incident-command-input"
+            onChange={(event) => setInput(event.target.value)}
+            placeholder="inspect metrics"
+            value={input}
+          />
+          <button type="submit">Run</button>
+        </form>
+
+        <div className="incident-command-groups" aria-label="Common playbook actions">
+          {commandGroups.map((group) => (
+            <div className="incident-command-group" key={group.label}>
+              <strong>{group.label}</strong>
+              <div className="incident-command-chips">
+                {group.commands.map((command) => (
+                  <button key={command} type="button" onClick={() => runGameCommand(command)}>
+                    {command}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {incidentState.status === 'won' && (
+          <div className="incident-unlock">
+            <strong>Incident closed</strong>
+            <p>
+              You diagnosed the AI system failure through evidence, applied a targeted mitigation, and validated the
+              recovery path. Use the related portfolio systems as field notes for the architecture behind the incident.
+            </p>
+            <div className="incident-portfolio-links">
+              {portfolioLinks.map((link) => (
+                <button
+                  className="button button-primary"
+                  key={`${link.projectFile}-${link.tab}`}
+                  type="button"
+                  onClick={() => onOpenProjectCommand(`cd ${projectPortfolioPath(link.projectFile, link.tab)}`)}
+                >
+                  open {link.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {incidentState.status === 'lost' && (
+          <div className="incident-unlock failed">
+            <strong>Incident failed</strong>
+            <p>Reset and try an evidence-first path: inspect impact, localize the fault, form a hypothesis, mitigate, validate, close.</p>
+            <div className="incident-portfolio-links">
+              {portfolioLinks.map((link) => (
+                <button
+                  className="button button-secondary"
+                  key={`${link.projectFile}-${link.tab}`}
+                  type="button"
+                  onClick={() => onOpenProjectCommand(`cd ${projectPortfolioPath(link.projectFile, link.tab)}`)}
+                >
+                  study {link.title}
+                </button>
+              ))}
+            </div>
+            <button className="button button-secondary" type="button" onClick={() => runGameCommand('reset')}>
+              reset incident
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function incidentLineClass(line: string) {
+  if (line.includes('FAIL') || line.includes('rejected') || line.includes('failed') || line.includes('dropped')) return 'incident-line danger';
+  if (line.includes('PASS') || line.includes('accepted') || line.includes('closed') || line.includes('achievement')) return 'incident-line success';
+  if (line.includes('WARN') || line.includes('suspect') || line.includes('degraded')) return 'incident-line warning';
+  if (line.startsWith('incident@portfolio')) return 'incident-line command';
+  return 'incident-line';
 }
 
 function BrowserFrame({ title, className = '', children }: { title: string; className?: string; children: React.ReactNode }) {
@@ -588,8 +1477,7 @@ function ProjectWorkspace({
       <article className="project-main">
         <div className="terminal-panel">
           <div className="terminal-lines">
-            <span>$ open {activeProject.file}</span>
-            <span>loaded: {activeProject.status.toLowerCase()}</span>
+            <span>$ open {shortPromptPath(projectPortfolioPath(activeProject.file, activeTab))}</span>
             <span>focus: {activeProject.type.toLowerCase()}</span>
             <span>origin: {activeProject.origin}</span>
           </div>
@@ -999,10 +1887,10 @@ function Footer() {
         <span>{contact.role}</span>
       </div>
       <div className="footer-links">
-        <a href={`mailto:${contact.email}`}>
+        <EmailLink>
           <Mail size={16} />
           {contact.email}
-        </a>
+        </EmailLink>
         <a href={contact.github} target="_blank" rel="noreferrer">
           <Github size={16} />
           GitHub
