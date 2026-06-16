@@ -116,7 +116,7 @@ test('incident commander opens from terminal and can be resolved', async ({ page
     await runTerminalCommand(page, command);
     const incident = page.getByRole('dialog', { name: /Incident Commander/i });
     await expect(incident).toBeVisible();
-    await incident.getByRole('button', { name: 'Close', exact: true }).click();
+    await incident.getByRole('button', { name: 'Close Incident Commander' }).click();
     await expect(incident).toHaveCount(0);
   }
 
@@ -139,10 +139,22 @@ test('incident commander opens from terminal and can be resolved', async ({ page
       : incidentText.includes('semantic-ingestion.prod')
         ? 'gpu'
         : 'parser';
+  const incidentCommandInput = incident.getByRole('textbox', { name: 'Incident command' });
+  await incidentCommandInput.fill('start incident');
+  await incident.getByRole('button', { name: 'Run', exact: true }).click();
+  await incidentCommandInput.fill('inspect slo');
+  await incident.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(incident.getByText(/Impact:/)).toBeVisible();
+
+  await incident.locator('.incident-board').filter({ hasText: 'Portfolio field guide' }).getByRole('button').first().click();
+  const minimizedIncident = page.getByRole('status', { name: /Incident Commander minimized/i });
+  await expect(minimizedIncident).toBeVisible();
+  await minimizedIncident.getByRole('button', { name: /Expand Incident Commander/i }).click();
+  await expect(incident).toBeVisible();
+  await expect(incident.getByText(/Impact:/)).toBeVisible();
+
   const commands = scenario === 'temporal'
     ? [
-        'start incident',
-        'inspect slo',
         'inspect rag',
         'inspect graph',
         'trace request',
@@ -153,8 +165,6 @@ test('incident commander opens from terminal and can be resolved', async ({ page
       ]
     : scenario === 'agent'
       ? [
-          'start incident',
-          'inspect slo',
           'inspect agent',
           'trace request',
           'inspect prompt',
@@ -165,8 +175,6 @@ test('incident commander opens from terminal and can be resolved', async ({ page
         ]
       : scenario === 'gpu'
         ? [
-            'start incident',
-            'inspect slo',
             'inspect index',
             'inspect gpu',
             'trace request',
@@ -177,8 +185,6 @@ test('incident commander opens from terminal and can be resolved', async ({ page
             'close incident',
           ]
         : [
-          'start incident',
-          'inspect slo',
           'inspect metrics',
           'inspect parser',
           'trace request',
@@ -189,7 +195,7 @@ test('incident commander opens from terminal and can be resolved', async ({ page
         ];
 
   for (const command of commands) {
-    await incident.getByLabel('Incident command').fill(command);
+    await incidentCommandInput.fill(command);
     await incident.getByRole('button', { name: 'Run', exact: true }).click();
   }
 

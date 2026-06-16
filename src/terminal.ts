@@ -1,5 +1,6 @@
 export type TerminalDockId = 'projects' | 'resume' | 'stack' | 'cloud';
 export type TerminalProjectTab = 'overview' | 'architecture' | 'evidence';
+export type PortfolioSection = 'home' | 'portfolio-os' | 'credentials';
 
 export type TerminalProjectRef = {
   file: string;
@@ -105,6 +106,31 @@ const helpLines = [
 
 export function normalizeTerminalInput(input: string) {
   return input.trim().replace(/\s+/g, ' ');
+}
+
+export function cwdForUiState(options: {
+  section: PortfolioSection;
+  dockId?: TerminalDockId;
+  projectFile?: string;
+  tab?: TerminalProjectTab;
+}) {
+  if (options.section === 'home') return rootPath;
+  if (options.section === 'credentials') return `${rootPath}credentials`;
+
+  const dockId = options.dockId ?? 'projects';
+  if (dockId === 'projects') {
+    const file = options.projectFile ?? 'synexis-product-platform.project';
+    const tab = options.tab ?? 'overview';
+    return `${projectRoot}/${file}/${tab}.tab`;
+  }
+
+  return `${rootPath}${dockId}.workspace`;
+}
+
+export function sectionFromHash(hash: string): PortfolioSection {
+  if (hash === '#credentials') return 'credentials';
+  if (hash === '#portfolio-os') return 'portfolio-os';
+  return 'home';
 }
 
 export function buildProjectRefs(projects: { file: string; title: string; summary?: string }[]): TerminalProjectRef[] {

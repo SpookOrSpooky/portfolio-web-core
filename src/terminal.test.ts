@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildProjectRefs, completeTerminalInput, executeTerminalCommand, parseTerminalCommand } from './terminal';
+import { buildProjectRefs, completeTerminalInput, cwdForUiState, executeTerminalCommand, parseTerminalCommand, sectionFromHash } from './terminal';
 
 const projects = buildProjectRefs([
   { file: 'synexis-product-platform.project', title: 'Synexis Product Platform', summary: 'Synexis summary' },
@@ -95,6 +95,23 @@ describe('terminal filesystem parser', () => {
     expect(output.find((line) => line.startsWith('  whoami') && line.includes('print identity summary'))).toBeTruthy();
     expect(output.join('\n')).not.toContain('cat profile.txt|contact.txt|README.md');
     expect(output.join('\n')).not.toContain('whoami | contact | clear | reboot');
+  });
+
+  it('maps portfolio UI state to terminal cwd paths', () => {
+    expect(
+      cwdForUiState({
+        section: 'portfolio-os',
+        dockId: 'projects',
+        projectFile: 'matching-engine.project',
+        tab: 'architecture',
+      }),
+    ).toBe('portfolio://projects/matching-engine.project/architecture.tab');
+    expect(cwdForUiState({ section: 'portfolio-os', dockId: 'stack' })).toBe('portfolio://stack.workspace');
+    expect(cwdForUiState({ section: 'credentials' })).toBe('portfolio://credentials');
+    expect(cwdForUiState({ section: 'home' })).toBe('portfolio://');
+    expect(sectionFromHash('#credentials')).toBe('credentials');
+    expect(sectionFromHash('#portfolio-os')).toBe('portfolio-os');
+    expect(sectionFromHash('#home')).toBe('home');
   });
 
   it('handles autocomplete, clear, contact, and invalid commands', () => {

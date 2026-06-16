@@ -1495,6 +1495,89 @@ nav a:hover {
   gap: 0.75rem;
 }
 
+.incident-window-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.incident-window-controls button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 2px 2px 0 var(--line);
+  cursor: pointer;
+}
+
+.incident-window-controls button:first-child {
+  background: #ff9a90;
+}
+
+.incident-window-controls button:nth-child(2) {
+  background: #f6c85f;
+}
+
+.incident-window-controls button:nth-child(3) {
+  background: #92e49b;
+}
+
+.incident-minibar {
+  position: fixed;
+  right: 18px;
+  bottom: 270px;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  max-width: min(640px, calc(100vw - 36px));
+  padding: 0.55rem;
+  border: 2px solid var(--line);
+  border-radius: 7px;
+  background: #171410;
+  color: #f7f0df;
+  box-shadow: var(--shadow);
+}
+
+.incident-minibar > div {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 0.12rem;
+}
+
+.incident-minibar strong,
+.incident-minibar span,
+.incident-minibar button {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.incident-minibar span {
+  overflow: hidden;
+  color: #c9bea5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.incident-minibar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  min-height: 32px;
+  padding: 0.25rem 0.45rem;
+  border: 2px solid var(--line);
+  border-radius: 5px;
+  background: #fff4db;
+  color: var(--ink);
+  box-shadow: 2px 2px 0 var(--line);
+  cursor: pointer;
+}
+
 .incident-header span,
 .incident-status-grid,
 .incident-command-form,
@@ -2103,8 +2186,13 @@ nav a:hover {
     bottom: 9px;
     left: 9px;
     width: auto;
-    height: 68vh;
-    max-height: 68vh;
+    height: 200px;
+    max-height: 200px;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .command-terminal-output {
+    min-height: 0;
   }
 
   .terminal-pill {
@@ -2112,6 +2200,13 @@ nav a:hover {
     bottom: 9px;
     left: 9px;
     justify-content: center;
+  }
+
+  .incident-minibar {
+    right: 9px;
+    bottom: calc(200px + 18px);
+    left: 9px;
+    max-width: none;
   }
 
   .terminal-intro-window {
@@ -2124,12 +2219,16 @@ nav a:hover {
   }
 
   .terminal-intro-overlay.docking .terminal-intro-window {
-    top: calc(100vh - 69vh);
+    top: calc(100vh - 209px);
     right: 9px;
     left: 9px;
     width: auto;
-    min-height: 68vh;
-    height: 68vh;
+    min-height: 200px;
+    height: 200px;
+  }
+
+  .terminal-intro-overlay.docking .terminal-intro-output {
+    min-height: 0;
   }
 
   .incident-status-grid {

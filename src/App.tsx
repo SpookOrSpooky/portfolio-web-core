@@ -33,7 +33,10 @@ import heroWorkbench from './assets/ai-workbench-hero.png';
 import {
   buildProjectRefs,
   completeTerminalInput,
+  cwdForUiState,
   executeTerminalCommand,
+  sectionFromHash,
+  type PortfolioSection,
   type TerminalDockId,
   type TerminalProjectTab,
 } from './terminal';
@@ -412,6 +415,7 @@ type TerminalLine = {
   text: string;
   tone?: 'command' | 'muted' | 'error';
 };
+type IncidentWindowState = 'closed' | 'open' | 'minimized';
 
 const projectRefs = buildProjectRefs(projects);
 const introBootSteps = [
@@ -429,13 +433,21 @@ function App() {
   const [activeProjectIndex, setActiveProjectIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<ProjectTab>('overview');
   const [activeDock, setActiveDock] = useState<DockId>('projects');
+  const [focusedSection, setFocusedSection] = useState<PortfolioSection>(() => sectionFromHash(window.location.hash));
   const [terminalOpen, setTerminalOpen] = useState(true);
   const [introPhase, setIntroPhase] = useState<'booting' | 'docking' | 'done'>('booting');
   const [introAccelerated, setIntroAccelerated] = useState(false);
   const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([]);
-  const [terminalCwd, setTerminalCwd] = useState('portfolio://');
+  const [terminalCwd, setTerminalCwd] = useState(() =>
+    cwdForUiState({
+      section: sectionFromHash(window.location.hash),
+      dockId: 'projects',
+      projectFile: projects[0].file,
+      tab: 'overview',
+    }),
+  );
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
-  const [incidentCommanderOpen, setIncidentCommanderOpen] = useState(false);
+  const [incidentWindowState, setIncidentWindowState] = useState<IncidentWindowState>('closed');
   const terminalLineId = useRef(1);
   const activeProject = projects[activeProjectIndex];
 
@@ -444,6 +456,27 @@ function App() {
       setTerminalOpen(false);
     }
   }, []);
+
+  useEffect(() => {
+    const syncSectionFromHash = () => {
+      setFocusedSection(sectionFromHash(window.location.hash));
+    };
+
+    syncSectionFromHash();
+    window.addEventListener('hashchange', syncSectionFromHash);
+    return () => window.removeEventListener('hashchange', syncSectionFromHash);
+  }, []);
+
+  useEffect(() => {
+    setTerminalCwd(
+      cwdForUiState({
+        section: focusedSection,
+        dockId: activeDock,
+        projectFile: activeProject.file,
+        tab: activeTab,
+      }),
+    );
+  }, [focusedSection, activeDock, activeProject.file, activeTab]);
 
   const scrollToTarget = (target: string) => {
     window.setTimeout(() => {
@@ -487,50 +520,53 @@ function App() {
     setCommandHistory((history) => [...history, input]);
     setTerminalOpen(true);
     setTerminalLines((lines) => (result.clear ? [] : [...lines, promptLine, ...outputLines]));
-    if (result.nextCwd) {
-      setTerminalCwd(result.nextCwd);
+
+    const terminalOnlyNavigation = Boolean(result.nextCwd && !result.action);
+    if (terminalOnlyNavigation) {
+      setTerminalCwd(result.nextCwd!);
     }
 
     if (result.action?.type === 'openProject') {
+      setFocusedSection('portfolio-os');
       setActiveDock('projects');
       setActiveProjectIndex(result.action.projectIndex);
       setActiveTab('overview');
-      setTerminalCwd(result.action.cwd);
       scrollToTarget('#portfolio-os');
     }
 
     if (result.action?.type === 'openDock') {
+      setFocusedSection('portfolio-os');
       setActiveDock(result.action.dockId);
-      setTerminalCwd(result.action.cwd);
       scrollToTarget('#portfolio-os');
     }
 
     if (result.action?.type === 'openCredentials') {
-      setTerminalCwd(result.action.cwd);
+      setFocusedSection('credentials');
       scrollToTarget('#credentials');
     }
 
     if (result.action?.type === 'setTab') {
-      const { cwd, tab } = result.action;
+      const { tab, cwd } = result.action;
+      setFocusedSection('portfolio-os');
       setActiveDock('projects');
       const projectFromPath = projectRefs.find((project) => cwd.includes(`/projects/${project.file}/`));
       if (projectFromPath) {
         setActiveProjectIndex(projectFromPath.index);
       }
       setActiveTab(tab);
-      setTerminalCwd(cwd);
       scrollToTarget('#portfolio-os');
     }
 
     if (result.action?.type === 'projectDelta') {
       const { delta } = result.action;
+      setFocusedSection('portfolio-os');
       setActiveDock('projects');
       setActiveProjectIndex((index) => (index + delta + projects.length) % projects.length);
       scrollToTarget('#portfolio-os');
     }
 
     if (result.openIncidentCommander) {
-      setIncidentCommanderOpen(true);
+      setIncidentWindowState('open');
     }
 
     if (result.replayIntro) {
@@ -554,6 +590,7 @@ function App() {
             setTerminalLines(bootLines);
             setTerminalOpen(true);
             setIntroPhase('docking');
+            setFocusedSection('portfolio-os');
             window.setTimeout(() => {
               setIntroPhase('done');
             }, 1500);
@@ -590,7 +627,7 @@ function App() {
           </div>
 
           <aside className="hero-profile" aria-label="Current profile">
-            <HeroTerminalCard activeProject={activeProject} />
+            <HeroTerminalCard terminalCwd={terminalCwd} />
             <div className="profile-chip">
               <span>Current role</span>
               <strong>{contact.role}</strong>
@@ -624,7 +661,10 @@ function App() {
                   className={activeDock === item.id ? 'dock-item active' : 'dock-item'}
                   key={item.id}
                   type="button"
-                  onClick={() => setActiveDock(item.id)}
+                  onClick={() => {
+                    setFocusedSection('portfolio-os');
+                    setActiveDock(item.id);
+                  }}
                 >
                   <Icon size={20} />
                   <span>{item.label}</span>
@@ -639,11 +679,16 @@ function App() {
                 activeProject={activeProject}
                 activeProjectIndex={activeProjectIndex}
                 activeTab={activeTab}
+                terminalCwd={terminalCwd}
                 onSelectProject={(index) => {
+                  setFocusedSection('portfolio-os');
                   setActiveProjectIndex(index);
                   setActiveTab('overview');
                 }}
-                onSelectTab={setActiveTab}
+                onSelectTab={(tab) => {
+                  setFocusedSection('portfolio-os');
+                  setActiveTab(tab);
+                }}
               />
             )}
             {activeDock === 'resume' && <ResumeWorkspace />}
@@ -685,11 +730,12 @@ function App() {
         onRunCommand={runTerminalCommand}
         onSetOpen={setTerminalOpen}
       />
-      {incidentCommanderOpen && (
+      {incidentWindowState !== 'closed' && (
         <IncidentCommanderModal
-          onClose={() => setIncidentCommanderOpen(false)}
+          windowState={incidentWindowState}
+          onWindowStateChange={setIncidentWindowState}
+          onClose={() => setIncidentWindowState('closed')}
           onOpenProjectCommand={(command) => {
-            setIncidentCommanderOpen(false);
             runTerminalCommand(command);
           }}
         />
@@ -709,10 +755,6 @@ function toBootTerminalLines(): TerminalLine[] {
 function shortPromptPath(cwd: string) {
   if (cwd === 'portfolio://') return '~';
   return cwd.replace('portfolio://', '~/');
-}
-
-function projectPortfolioPath(file: string, tab: ProjectTab = 'overview') {
-  return `portfolio://projects/${file}/${tab}.tab`;
 }
 
 function Header() {
@@ -964,7 +1006,7 @@ function formatIntroProgress(progress: number) {
   return `[${bar}] ${Math.round(progress)}%${status}`;
 }
 
-function HeroTerminalCard({ activeProject }: { activeProject: Project }) {
+function HeroTerminalCard({ terminalCwd }: { terminalCwd: string }) {
   return (
     <div className="hero-terminal-card" aria-label="Portfolio terminal status">
       <div className="terminal-window-bar">
@@ -977,7 +1019,7 @@ function HeroTerminalCard({ activeProject }: { activeProject: Project }) {
         <strong>Applied AI systems leader</strong>
         <span>Graph-backed memory, recommenders, agents, MLOps, and cloud infrastructure.</span>
         <span className="terminal-command">
-          daniel@portfolio:~$ open {shortPromptPath(projectPortfolioPath(activeProject.file))}
+          daniel@portfolio:~$ open {shortPromptPath(terminalCwd)}
         </span>
         <span className="terminal-block-cursor" aria-hidden="true">█</span>
       </div>
@@ -1177,9 +1219,13 @@ function CommandTerminal({
 }
 
 function IncidentCommanderModal({
+  windowState,
+  onWindowStateChange,
   onClose,
   onOpenProjectCommand,
 }: {
+  windowState: IncidentWindowState;
+  onWindowStateChange: (state: IncidentWindowState) => void;
   onClose: () => void;
   onOpenProjectCommand: (command: string) => void;
 }) {
@@ -1268,6 +1314,29 @@ function IncidentCommanderModal({
     { label: 'Replay', commands: ['run replay constraints', 'run replay temporal', 'run replay numeric', 'run replay retrieval', 'validate', 'close incident'] },
   ];
 
+  const openGuideLink = (projectFile: string, tab: ProjectTab) => {
+    onWindowStateChange('minimized');
+    onOpenProjectCommand(`cd ${projectPortfolioPath(projectFile, tab)}`);
+  };
+
+  if (windowState === 'minimized') {
+    return (
+      <div className="incident-minibar" role="status" aria-label="Incident Commander minimized">
+        <div>
+          <strong>Incident Commander</strong>
+          <span>{incidentState.status} / {formatIncidentTime(incidentState.timeRemaining)} / {incidentState.scenario.symptom}</span>
+        </div>
+        <button type="button" onClick={() => onWindowStateChange('open')} aria-label="Expand Incident Commander">
+          <Maximize2 size={16} />
+          Expand
+        </button>
+        <button type="button" onClick={onClose} aria-label="Close Incident Commander">
+          <X size={16} />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="incident-modal" role="dialog" aria-modal="true" aria-label="Incident Commander">
       <div className="incident-panel">
@@ -1276,9 +1345,17 @@ function IncidentCommanderModal({
             <span>incident://{incidentState.scenario.target}</span>
             <h2>Incident Commander: {incidentState.scenario.title}</h2>
           </div>
-          <button className="media-toggle" type="button" onClick={onClose}>
-            Close
-          </button>
+          <div className="incident-window-controls" aria-label="Incident window controls">
+            <button type="button" onClick={onClose} aria-label="Close Incident Commander">
+              <X size={14} />
+            </button>
+            <button type="button" onClick={() => onWindowStateChange('minimized')} aria-label="Minimize Incident Commander">
+              <Minimize2 size={14} />
+            </button>
+            <button type="button" onClick={() => onWindowStateChange('open')} aria-label="Expand Incident Commander">
+              <Maximize2 size={14} />
+            </button>
+          </div>
         </div>
 
         <div className="incident-status-grid" aria-label="Incident status">
@@ -1314,7 +1391,7 @@ function IncidentCommanderModal({
               <button
                 key={`${link.projectFile}-${link.tab}-guide`}
                 type="button"
-                onClick={() => onOpenProjectCommand(`cd ${projectPortfolioPath(link.projectFile, link.tab)}`)}
+                onClick={() => openGuideLink(link.projectFile, link.tab)}
               >
                 {link.title}
               </button>
@@ -1375,7 +1452,7 @@ function IncidentCommanderModal({
                   className="button button-primary"
                   key={`${link.projectFile}-${link.tab}`}
                   type="button"
-                  onClick={() => onOpenProjectCommand(`cd ${projectPortfolioPath(link.projectFile, link.tab)}`)}
+                  onClick={() => openGuideLink(link.projectFile, link.tab)}
                 >
                   open {link.title}
                 </button>
@@ -1394,7 +1471,7 @@ function IncidentCommanderModal({
                   className="button button-secondary"
                   key={`${link.projectFile}-${link.tab}`}
                   type="button"
-                  onClick={() => onOpenProjectCommand(`cd ${projectPortfolioPath(link.projectFile, link.tab)}`)}
+                  onClick={() => openGuideLink(link.projectFile, link.tab)}
                 >
                   study {link.title}
                 </button>
@@ -1441,12 +1518,14 @@ function ProjectWorkspace({
   activeProject,
   activeProjectIndex,
   activeTab,
+  terminalCwd,
   onSelectProject,
   onSelectTab,
 }: {
   activeProject: Project;
   activeProjectIndex: number;
   activeTab: ProjectTab;
+  terminalCwd: string;
   onSelectProject: (index: number) => void;
   onSelectTab: (tab: ProjectTab) => void;
 }) {
@@ -1477,7 +1556,7 @@ function ProjectWorkspace({
       <article className="project-main">
         <div className="terminal-panel">
           <div className="terminal-lines">
-            <span>$ open {shortPromptPath(projectPortfolioPath(activeProject.file, activeTab))}</span>
+            <span>$ open {shortPromptPath(terminalCwd)}</span>
             <span>focus: {activeProject.type.toLowerCase()}</span>
             <span>origin: {activeProject.origin}</span>
           </div>
