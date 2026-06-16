@@ -5,11 +5,10 @@ Hostable React/Vite portfolio site for Daniel Campbell, styled as an interactive
 ## What is included
 
 - Responsive single-page portfolio webapp with browser chrome, project files, active tabs, a dock, and switchable workspace windows.
-- Project showcase for GraphRAG, recommender systems, agentic RAG, MLOps, legal retrieval, voice conversion, secure GeoSat AIOps, and RL web parsing work.
-- Expanded experience, technical stack, credentials, policy, and public leadership sections.
-- Blog area with manual post cards and an optional Substack embed slot.
+- Project showcase for application engineering, cloud engineering, GraphRAG, recommender systems, agentic RAG, MLOps, legal retrieval, voice conversion, secure GeoSat AIOps, and RL web parsing work.
+- Expanded experience, technical stack, cloud engineering, credentials, policy, and public leadership sections.
 - Generated project hero asset stored at `src/assets/ai-workbench-hero.png`.
-- Open Graph image at `public/og-image.png`, RSS placeholder at `public/rss.xml`, and PWA manifest at `public/manifest.webmanifest`.
+- Open Graph image at `public/og-image.png`, favicon at `public/favicon.svg`, and PWA manifest at `public/manifest.webmanifest`.
 
 ## Local development
 
@@ -29,23 +28,9 @@ npm run preview
 
 The production files are emitted to `dist/`.
 
-## Configure the Substack embed
+## Metadata
 
-Set `VITE_SUBSTACK_URL` to your Substack embed URL before running or deploying:
-
-```bash
-VITE_SUBSTACK_URL=https://your-publication.substack.com/embed npm run dev
-```
-
-For hosted deployments, add `VITE_SUBSTACK_URL` as an environment variable in the hosting provider dashboard. If it is not set, the site shows a ready-state panel and the manual post cards remain visible.
-
-Manual posts are edited in `src/App.tsx` in the `blogPosts` array.
-
-## RSS and metadata
-
-The app ships with static RSS discovery at `public/rss.xml`. Replace the `https://example.com/` links with your production domain before launch.
-
-The Open Graph image is `public/og-image.png`. Replace it if you want a custom social preview.
+The Open Graph image is `public/og-image.png`. Replace it if you want a custom social preview. The browser favicon is `public/favicon.svg` and works on Cloudflare Pages as a normal static asset.
 
 ## Deployment
 
@@ -56,8 +41,7 @@ The Open Graph image is `public/og-image.png`. Replace it if you want a custom s
 3. Framework preset: `Vite`.
 4. Build command: `npm run build`.
 5. Output directory: `dist`.
-6. Add `VITE_SUBSTACK_URL` only if you want the embedded Substack panel.
-7. Deploy.
+6. Deploy.
 
 ### Netlify
 
@@ -65,8 +49,7 @@ The Open Graph image is `public/og-image.png`. Replace it if you want a custom s
 2. Create a new Netlify site from the repository.
 3. Build command: `npm run build`.
 4. Publish directory: `dist`.
-5. Add `VITE_SUBSTACK_URL` under Site configuration > Environment variables if needed.
-6. Deploy.
+5. Deploy.
 
 ### Cloudflare Pages
 
@@ -74,8 +57,7 @@ The Open Graph image is `public/og-image.png`. Replace it if you want a custom s
 2. Framework preset: `Vite`.
 3. Build command: `npm run build`.
 4. Build output directory: `dist`.
-5. Add `VITE_SUBSTACK_URL` if needed.
-6. Deploy.
+5. Deploy.
 
 ### Static hosting or S3
 
@@ -93,7 +75,7 @@ Most portfolio content lives in arrays near the top of `src/App.tsx`:
 - `projects`
 - `experience`
 - `stackGroups`
-- `blogPosts`
+- `cloudCapabilities`
 - `signalStats`
 - `contact`
 
